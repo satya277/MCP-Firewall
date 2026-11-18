@@ -1,0 +1,42 @@
+# Remote gateway demo stack: gateway + PostgreSQL + Redis.
+# 1) cp .env.example .env  and fill MCPFW_* tokens (see `mcp-firewall token generate`)
+# 2) docker compose up --build
+# Put a TLS-terminating proxy / tunnel in front of port 8080 before exposing it to Claude Web.
+services:
+  gateway:
+    build: .
+    env_file: .env
+    environment:
+      MCPFW_SERVERS_FILE: /app/config/servers.remote.yaml
+      MCPFW_POLICIES_FILE: /app/config/policies.example.yaml
+      MCPFW_DATABASE_URL: postgresql://mcpfw:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/mcpfw
+      MCPFW_REDIS_URL: redis://redis:6379/0
+      MCPFW_ENCRYPTION_KEY: ${MCPFW_ENCRYPTION_KEY:?set a Fernet key - python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"}
+      MCPFW_ALLOWED_HOSTS: '["localhost","127.0.0.1","localhost:8080","127.0.0.1:8080"]'
+      MCPFW_AUTO_START_AGENT: "false"
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    read_only: true
+    tmpfs: ["/tmp", "/home/mcpfw/.mcp-firewall"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcpfw
+      POSTGRES_DB: mcpfw
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U mcpfw"], interval: 5s, retries: 10 }
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+
+volumes:
+  pgdata: {}

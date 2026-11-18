@@ -1,0 +1,7 @@
+# Remote gateways the desktop agent should also show popups for (e.g. the one Claude Web talks to).
+# Start the agent with:  mcp-firewall agent --remotes config/remotes.yaml
+# The token is an *approver* token (see `mcp-firewall token generate`); reference it from the environment.
+remotes:
+  - name: cloud
+    url: https://firewall.example.com
+    token: ${MCPFW_REMOTE_APPROVER_TOKEN}

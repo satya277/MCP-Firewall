@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Firewall - Approvals</title>
+<style>
+  :root { --bg:#0f1420; --card:#171e2e; --fg:#e6e9f2; --mut:#8e98b3; --ok:#2fb36d; --bad:#e5484d; --warn:#f5a524; --line:#2a3350; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:17px; margin:0; flex:1; }
+  .pill { padding:2px 10px; border-radius:99px; background:var(--card); border:1px solid var(--line); color:var(--mut); }
+  .pill.on { color:var(--ok); border-color:var(--ok); } .pill.off { color:var(--bad); border-color:var(--bad); }
+  main { max-width:1000px; margin:0 auto; padding:20px; }
+  #login { max-width:420px; margin:80px auto; background:var(--card); padding:24px; border-radius:12px; border:1px solid var(--line); }
+  input[type=password], input[type=text] { width:100%; padding:10px; border-radius:8px; border:1px solid var(--line); background:#0c111c; color:var(--fg); }
+  button { cursor:pointer; border:0; border-radius:8px; padding:9px 18px; font-weight:600; color:#fff; }
+  .allow { background:var(--ok); } .block { background:var(--bad); } .ghost { background:#2a3350; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; } .mut { color:var(--mut); }
+  .risk { padding:1px 8px; border-radius:6px; font-weight:700; font-size:12px; }
+  .risk.LOW { background:#16372a; color:var(--ok); } .risk.MEDIUM { background:#3a3014; color:var(--warn); }
+  .risk.HIGH,.risk.CRITICAL { background:#3d1a1d; color:var(--bad); }
+  pre { background:#0c111c; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; max-height:260px; white-space:pre-wrap; word-break:break-word; }
+  .warnbox { border-left:3px solid var(--warn); padding:6px 10px; background:#2a2412; margin:8px 0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } td,th { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  .hidden { display:none; } code { color:var(--mut); }
+</style>
+</head>
+<body>
+<div id="login">
+  <h2 style="margin-top:0">MCP Firewall</h2>
+  <p class="mut">Enter your approver token. It is kept in this tab's session storage only and is never sent anywhere except this server.</p>
+  <input id="token" type="password" placeholder="mcpfw_..." autocomplete="off">
+  <p id="loginErr" class="mut"></p>
+  <button class="allow" id="loginBtn">Connect</button>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>MCP Firewall - Pending approvals</h1>
+    <span class="pill" id="conn">connecting…</span>
+    <span class="pill" id="kill">kill switch: ?</span>
+    <button class="ghost" id="killBtn">Toggle kill switch</button>
+    <button class="ghost" id="logout">Sign out</button>
+  </header>
+  <main>
+    <div id="pending"></div>
+    <p id="empty" class="mut">No requests are waiting for approval.</p>
+    <h3>Recent audit events</h3>
+    <div class="card"><table><thead><tr><th>#</th><th>Time</th><th>Event</th><th>Actor</th><th>Details</th></tr></thead><tbody id="audit"></tbody></table></div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k === "class") e.className = v; else e[k] = v; }
+  for (const kid of kids) e.append(kid);   // append() with strings -> text nodes: no HTML injection
+  return e;
+};
+let token = sessionStorage.getItem("mcpfw_token") || "";
+let ws = null, pending = new Map(), retry = 1000;
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", ...(opts.headers || {}) } });
+  let body = null; try { body = await res.json(); } catch (_) {}
+  return { ok: res.ok, status: res.status, body };
+}
+
+function connect() {
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${scheme}://${location.host}/api/v1/ws`);
+  ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token }));
+  ws.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    if (msg.type === "ready") { $("conn").textContent = "connected"; $("conn").className = "pill on"; retry = 1000; refreshAudit(); }
+    else if (msg.type === "snapshot") { pending = new Map(msg.pending.map((r) => [r.id, r])); render(); }
+    else if (msg.type === "ping") ws.send(JSON.stringify({ type: "pong" }));
+    else if (msg.type === "event") onEvent(msg.event);
+    else if (msg.type === "error") { logout(); $("loginErr").textContent = "Invalid token."; }
+  };
+  ws.onclose = () => { $("conn").textContent = "disconnected"; $("conn").className = "pill off"; if (token) setTimeout(connect, retry = Math.min(retry * 2, 10000)); };
+}
+
+function onEvent(ev) {
+  if (ev.type === "approval.requested") pending.set(ev.request_id, ev.payload);
+  else if (ev.type === "approval.decided" || ev.type === "request.updated") {
+    const view = ev.payload.request || ev.payload;
+    if (view.status !== "PENDING_APPROVAL") pending.delete(ev.request_id);
+  }
+  render(); refreshAudit();
+}
+
+function render() {
+  const box = $("pending"); box.replaceChildren();
+  const items = [...pending.values()].sort((a, b) => a.created_at - b.created_at);
+  $("empty").classList.toggle("hidden", items.length > 0);
+  for (const r of items) box.append(card(r));
+}
+
+function card(r) {
+  const confirm = el("input", { type: "checkbox", id: "c-" + r.id });
+  const allow = el("button", { class: "allow", textContent: "Allow", disabled: r.strong_confirmation });
+  const block = el("button", { class: "block", textContent: "Block" });
+  if (r.strong_confirmation) confirm.onchange = () => (allow.disabled = !confirm.checked);
+  allow.onclick = () => decide(r, "allow", confirm.checked);
+  block.onclick = () => decide(r, "block", false);
+  const left = el("span", { class: "mut", textContent: "" });
+  const tick = () => { const s = Math.max(0, Math.round(r.expires_at - Date.now() / 1000)); left.textContent = `expires in ${s}s`; };
+  tick(); const timer = setInterval(() => { if (!document.body.contains(left)) clearInterval(timer); else tick(); }, 1000);
+  const c = el("div", { class: "card" },
+    el("div", { class: "row" },
+      el("strong", { textContent: `${r.server} / ${r.tool}` }),
+      el("span", { class: "risk " + r.risk.level, textContent: r.risk.level }),
+      el("span", { class: "grow" }), left),
+    el("div", { class: "mut", textContent: `client: ${r.client} · operation: ${r.operation} · policy: ${r.policy.rule || "default"}` }),
+    ...r.risk.reasons.map((x) => el("div", { class: "mut", textContent: "• " + x })),
+    r.schema_changed ? el("div", { class: "warnbox", textContent: "This tool's definition changed since it was last trusted." }) : "",
+    r.description ? el("div", { class: "mut", textContent: "Tool description (untrusted): " + r.description }) : "",
+    el("pre", { textContent: r.arguments }),
+    el("div", { class: "mut" }, "request hash ", el("code", { textContent: r.request_hash.slice(0, 16) + "…" })),
+    r.strong_confirmation ? el("label", { class: "warnbox" }, confirm, " I have reviewed the exact arguments above and confirm this high-risk action.") : "",
+    el("div", { class: "row", style: "margin-top:10px" }, allow, block));
+  return c;
+}
+
+async function decide(r, decision, confirm) {
+  const res = await api(`/api/v1/requests/${encodeURIComponent(r.id)}/decision`, { method: "POST", body: JSON.stringify({ decision, request_hash: r.request_hash, confirm }) });
+  if (!res.ok) alert((res.body && res.body.message) || "Decision failed (" + res.status + ")");
+  pending.delete(r.id); render(); refreshAudit();
+}
+
+async function refreshAudit() {
+  const res = await api("/api/v1/audit?limit=500"); if (!res.ok) return;
+  const tbody = $("audit"); tbody.replaceChildren();
+  for (const e of res.body.events.slice(-25).reverse()) {
+    const meta = ["server", "tool", "status", "decision", "reason", "outcome"].filter((k) => e.metadata[k]).map((k) => `${k}=${e.metadata[k]}`).join(" ");
+    tbody.append(el("tr", {}, el("td", { textContent: e.seq }), el("td", { textContent: new Date(e.ts * 1000).toLocaleTimeString() }), el("td", { textContent: e.type }), el("td", { textContent: e.actor }), el("td", { class: "mut", textContent: meta })));
+  }
+  const k = await api("/api/v1/killswitch"); if (k.ok) { $("kill").textContent = "kill switch: " + (k.body.enabled ? "ON" : "off"); $("kill").className = "pill " + (k.body.enabled ? "off" : "on"); }
+}
+
+function logout() { token = ""; sessionStorage.removeItem("mcpfw_token"); if (ws) ws.close(); $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+function start() { $("login").classList.add("hidden"); $("app").classList.remove("hidden"); connect(); }
+
+$("loginBtn").onclick = async () => { token = $("token").value.trim(); const r = await api("/api/v1/me"); if (!r.ok) { $("loginErr").textContent = "Invalid token."; return; } sessionStorage.setItem("mcpfw_token", token); $("token").value = ""; start(); };
+$("logout").onclick = logout;
+$("killBtn").onclick = async () => { const cur = await api("/api/v1/killswitch"); const r = await api("/api/v1/killswitch", { method: "POST", body: JSON.stringify({ enabled: !cur.body.enabled }) }); if (!r.ok) alert("Admin role required."); refreshAudit(); };
+if (token) api("/api/v1/me").then((r) => (r.ok ? start() : logout()));
+</script>
+</body>
+</html>

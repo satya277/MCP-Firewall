@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-firewall"
+version = "0.1.0"
+description = "Human-in-the-loop security gateway for Model Context Protocol (MCP) tool calls."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "mcp>=1.12,<2",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "websockets>=13.0",
+    "aiosqlite>=0.20",
+    "cryptography>=42",
+    "prometheus-client>=0.20",
+    "jsonschema>=4.20",
+]
+
+[project.optional-dependencies]
+desktop = ["PySide6>=6.7"]
+keyring = ["keyring>=25"]
+postgres = ["asyncpg>=0.29"]
+redis = ["redis>=5.0"]
+otel = ["opentelemetry-api>=1.25", "opentelemetry-sdk>=1.25"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "pytest-timeout>=2.3", "ruff>=0.5"]
+
+[project.scripts]
+mcp-firewall = "mcp_firewall.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_firewall"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+timeout = 120
+markers = [
+    "integration: needs external services (PostgreSQL / Redis via docker compose)",
+    "ui: needs Qt (runs offscreen)",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["S101", "S104", "B008", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B", "ASYNC109"]
+"scripts/**" = ["S"]

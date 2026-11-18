@@ -1,0 +1,29 @@
+# Upstream MCP servers the firewall protects. Copy to config/servers.yaml and edit.
+# Secrets: never write them here - reference environment variables as ${NAME}.
+namespace_tools: true            # tools are exposed to Claude as <server>__<tool>
+
+# Only these executables may be launched for stdio servers (no shell is ever used).
+allowed_executables: [python, python.exe, python3, node, npx, npx.cmd, uvx, uv]
+
+servers:
+  # The bundled demo server (sandboxed file tools + execution log).
+  - name: demo
+    transport: stdio
+    command: python
+    args: ["demo/demo_server.py"]
+    env:
+      DEMO_SANDBOX: "demo-sandbox"
+      DEMO_EXEC_LOG: "demo-output/exec-log.jsonl"
+
+  # Example: a real filesystem server restricted to one directory.
+  # - name: files
+  #   transport: stdio
+  #   command: npx
+  #   args: ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/me/Documents/safe-dir"]
+
+  # Example: a remote server (HTTPS only; private/loopback addresses are blocked unless allowed_hosts lists them).
+  # - name: remote-tools
+  #   transport: streamable_http
+  #   url: https://mcp.example.com/mcp
+  #   headers:
+  #     Authorization: "Bearer ${REMOTE_TOOLS_TOKEN}"

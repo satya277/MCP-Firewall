@@ -1,0 +1,11 @@
+# Upstreams for the containerised remote gateway (paths are inside the image).
+namespace_tools: true
+allowed_executables: [python]
+servers:
+  - name: demo
+    transport: stdio
+    command: python
+    args: ["/app/demo/demo_server.py"]
+    env:
+      DEMO_SANDBOX: "/tmp/demo-sandbox"
+      DEMO_EXEC_LOG: "/tmp/demo-exec-log.jsonl"

@@ -1,0 +1,49 @@
+# Deterministic security policy.
+# Resolution: any matching DENY wins; otherwise the highest priority match wins (ties -> most restrictive);
+# no match -> default_action. Tool names/descriptions from upstream servers are never trusted as instructions.
+default_action: require_approval
+
+rules:
+  - id: deny-shell-execution
+    action: deny
+    priority: 1000
+    description: Arbitrary command execution is never allowed
+    tools: ["*exec*", "*shell*", "*run_command*", "*powershell*", "*bash*"]
+
+  - id: deny-path-traversal
+    action: deny
+    priority: 900
+    description: Path traversal attempts
+    when:
+      - { path: path, op: regex, value: '(^|[\\/])\.\.([\\/]|$)' }
+
+  - id: allow-harmless-echo
+    action: allow
+    priority: 100
+    description: Echo has no side effects
+    servers: [demo]
+    tools: [echo]
+
+  - id: allow-read-public
+    action: allow
+    priority: 100
+    description: Reading files under public/ is pre-approved
+    servers: [demo]
+    tools: [read_file]
+    when:
+      - { path: path, op: starts_with, value: "public/" }
+
+  - id: confirm-delete
+    action: require_approval
+    priority: 200
+    description: Deleting needs explicit, confirmed approval
+    tools: ["delete_*", "*_delete", "remove_*"]
+    risk: high
+    strong_confirmation: true
+
+  - id: approve-writes
+    action: require_approval
+    priority: 50
+    description: Creating or changing files needs approval
+    tools: ["create_*", "write_*", "edit_*"]
+    risk: medium

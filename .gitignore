@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# Python / tooling
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------------------
+# AI coding-agent / assistant files (local config, plans, memory, prompts)
+# ---------------------------------------------------------------------------
+.vscode/
+.copilot/
+.github/copilot-instructions.md
+.github/instructions/
+.github/agents/
+.github/prompts/
+.claude/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.gemini/
+.codex/
+.cursor/
+.cursorrules
+.windsurf/
+.windsurfrules
+.continue/
+.aider*
+.agent/
+.agents/
+.deepeval/
+.azure/
+.mcp.json
+mcp.json
+
+# ---------------------------------------------------------------------------
+# Logs and agent / sub-agent runtime output (may contain prompts, paths, tokens)
+# ---------------------------------------------------------------------------
+*.log
+*.log.*
+logs/
+log/
+*.jsonl
+*.trace
+*.out
+*.err
+agent*.log
+subagent*.log
+sub-agent*.log
+agents-logs/
+agent-logs/
+.agent-logs/
+session-state/
+.copilot-logs/
+computer-use*/
+screenshots/
+# local gateway <-> desktop-agent handshake (gateway-*.json holds a session token)
+run/
+gateway-*.json
+agent.heartbeat
+
+# ---------------------------------------------------------------------------
+# Secrets and credentials - never commit
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.token
+id_rsa*
+id_ed25519*
+secrets/
+credentials*.json
+service-account*.json
+*-auth.json
+.npmrc
+.pypirc
+*.tfstate
+*.tfstate.*
+kubeconfig
+
+# ---------------------------------------------------------------------------
+# Project-local state (machine specific, may contain paths or tokens)
+# ---------------------------------------------------------------------------
+config/*.local.yaml
+config/remotes.yaml
+.mcp-firewall/
+*.db
+*.db-wal
+*.db-shm
+*.bak-mcpfw
+claude_desktop_config*.json
+
+# demo output
+demo-sandbox/
+demo-output/
